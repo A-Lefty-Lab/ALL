@@ -2077,21 +2077,12 @@ async function doLoginGoogle(){
   google.accounts.id.prompt();
 }
 
-/* ── Kakao ── */
+/* ── Kakao (Supabase OAuth redirect) ── */
 async function doLoginKakao(){
-  if(!hasOAuthKey('kakao')){ showNickModal('kakao'); return; }
-  await loadScript('https://t1.kakaocdn.net/kakao_js_sdk/2.7.2/kakao.min.js');
-  if(!Kakao.isInitialized()) Kakao.init(OAUTH.kakao.appKey);
-  Kakao.Auth.loginForm({
-    success: async(authObj)=>{
-      Kakao.Auth.setAccessToken(authObj.access_token);
-      try{
-        const res=await new Promise((ok,ng)=>Kakao.API.request({url:'/v2/user/me',success:ok,fail:ng}));
-        const name=res.kakao_account?.profile?.nickname||String(res.id);
-        completeSocialLogin('kakao', name, String(res.id));
-      }catch{ showNickModal('kakao'); }
-    },
-    fail:()=>{},
+  if(!sb){ showNickModal('kakao'); return; }
+  await sb.auth.signInWithOAuth({
+    provider:'kakao',
+    options:{ redirectTo: window.location.href }
   });
 }
 
@@ -2322,6 +2313,18 @@ document.addEventListener('keydown',e=>{
    INIT
 ══════════════════════════════════════ */
 async function init(){
+  /* 0. Supabase OAuth 콜백 처리 (카카오 로그인 후 리다이렉트) */
+  if(sb){
+    const {data:{session}}=await sb.auth.getSession();
+    if(session?.user){
+      const u=session.user;
+      const name=u.user_metadata?.name||u.user_metadata?.full_name||u.user_metadata?.preferred_username||u.email||u.id;
+      if(!socialUser){
+        socialUser={provider:u.app_metadata?.provider||'kakao', displayName:name, uid:u.id};
+        save('hlh_social_user', socialUser);
+      }
+    }
+  }
   /* 1. Supabase에서 posts + categories 로드 */
   await Promise.all([loadPostsFromDB(), loadCatsFromDB()]);
   /* 2. 나머지 초기화 */
