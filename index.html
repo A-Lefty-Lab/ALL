@@ -2082,7 +2082,10 @@ async function doLoginKakao(){
   if(!sb){ showNickModal('kakao'); return; }
   await sb.auth.signInWithOAuth({
     provider:'kakao',
-    options:{ redirectTo: window.location.href }
+    options:{
+      redirectTo: window.location.href,
+      scopes: 'profile_nickname profile_image',
+    }
   });
 }
 
