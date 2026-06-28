@@ -2050,7 +2050,7 @@ async function doLoginGoogle(){
   if(!sb){ showNickModal('google'); return; }
   await sb.auth.signInWithOAuth({
     provider:'google',
-    options:{ redirectTo: window.location.href }
+    options:{ redirectTo: window.location.origin+window.location.pathname }
   });
 }
 
@@ -2060,7 +2060,7 @@ async function doLoginKakao(){
   await sb.auth.signInWithOAuth({
     provider:'kakao',
     options:{
-      redirectTo: window.location.href,
+      redirectTo: window.location.origin+window.location.pathname,
       scopes: 'profile_nickname profile_image',
     }
   });
@@ -2071,7 +2071,7 @@ async function doLoginLinkedin(){
   if(!sb){ showNickModal('linkedin'); return; }
   await sb.auth.signInWithOAuth({
     provider:'linkedin_oidc',
-    options:{ redirectTo: window.location.href }
+    options:{ redirectTo: window.location.origin+window.location.pathname }
   });
 }
 
@@ -2080,7 +2080,7 @@ async function doLoginGithub(){
   if(!sb){ showNickModal('github'); return; }
   await sb.auth.signInWithOAuth({
     provider:'github',
-    options:{ redirectTo: window.location.href }
+    options:{ redirectTo: window.location.origin+window.location.pathname }
   });
 }
 
@@ -2089,7 +2089,7 @@ async function doLoginFacebook(){
   if(!sb){ showNickModal('facebook'); return; }
   await sb.auth.signInWithOAuth({
     provider:'facebook',
-    options:{ redirectTo: window.location.href }
+    options:{ redirectTo: window.location.origin+window.location.pathname }
   });
 }
 
