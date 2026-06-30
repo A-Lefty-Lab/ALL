@@ -594,8 +594,8 @@ select{appearance:none;cursor:pointer;}
       <div class="upload-preview" id="upload-preview"></div>
     </div>
     <div class="form-group">
-      <label id="lbl-embed">YouTube / Vimeo 링크 임베드 (최대 2개)</label>
-      <input type="url" id="embed-url-1" placeholder="https://www.youtube.com/watch?v=..." oninput="previewEmbed()" style="margin-bottom:6px">
+      <label id="lbl-embed">동영상 링크 임베드 (최대 2개)</label>
+      <input type="url" id="embed-url-1" placeholder="YouTube / Shorts / Vimeo / Instagram / Facebook URL" oninput="previewEmbed()" style="margin-bottom:6px">
       <input type="url" id="embed-url-2" placeholder="두 번째 URL (선택)" oninput="previewEmbed()">
       <div class="embed-preview" id="embed-preview-wrap" style="display:none"></div>
     </div>
@@ -1040,7 +1040,7 @@ const T={
     adminLbl:'관리자',btnLogin:'로그인',btnLogout:'로그아웃',
     writeTitle:'새 포스팅',lblType:'포스팅 유형',lblCat:'카테고리',lblCatEdit:'카테고리 편집',
     lblUpload:'이미지 / 동영상 업로드',lblDrop:'클릭하거나 파일을 여기에 드래그하세요',
-    lblEmbed:'YouTube / Vimeo / 동영상 링크 임베드',cancel:'취소',submit:'게시하기',
+    lblEmbed:'동영상 링크 임베드 (YouTube·Shorts·Vimeo·Instagram·Facebook)',cancel:'취소',submit:'게시하기',
     del:'삭제',edit:'편집',rename:'이름변경',
     done:'완료',inProg:'진행중',today:'오늘',
     noPost:'게시글이 없습니다',
@@ -1075,7 +1075,7 @@ const T={
     adminLbl:'Admin',btnLogin:'Login',btnLogout:'Logout',
     writeTitle:'New Post',lblType:'Post Type',lblCat:'Category',lblCatEdit:'Edit Categories',
     lblUpload:'Image / Video Upload',lblDrop:'Click or drag files here',
-    lblEmbed:'YouTube / Vimeo / Video Link Embed',cancel:'Cancel',submit:'Publish',
+    lblEmbed:'Video Embed (YouTube·Shorts·Vimeo·Instagram·Facebook)',cancel:'Cancel',submit:'Publish',
     del:'Delete',edit:'Edit',rename:'Rename',
     done:'Done',inProg:'In Progress',today:'Today',
     noPost:'No posts yet',
@@ -1200,10 +1200,10 @@ function embedHtml(embed){
   try{ urls=JSON.parse(embed); if(!Array.isArray(urls)) urls=[embed]; }
   catch{ urls=[embed]; }
   return urls.filter(Boolean).map(url=>{
-    const yt=ytId(url);
-    if(yt) return `<div class="embed-wrap"><iframe src="https://www.youtube.com/embed/${encodeURIComponent(yt)}" allowfullscreen title="YouTube" sandbox="allow-scripts allow-same-origin allow-presentation"></iframe></div>`;
-    const vm=vmId(url);
-    if(vm) return `<div class="embed-wrap"><iframe src="https://player.vimeo.com/video/${encodeURIComponent(vm)}" allowfullscreen title="Vimeo" sandbox="allow-scripts allow-same-origin allow-presentation"></iframe></div>`;
+    const e=makeEmbedIframe(url);
+    if(!e) return '';
+    if(e.type==='iframe') return `<div class="embed-wrap"><iframe src="${e.src}" allowfullscreen title="${e.title}" sandbox="allow-scripts allow-same-origin allow-presentation allow-popups"></iframe></div>`;
+    if(e.type==='link') return `<div class="embed-ph"><i class="ti ti-brand-x" style="font-size:20px;display:block;margin-bottom:6px"></i><a href="${escHtml(e.url)}" target="_blank" rel="noopener">${escHtml(e.label)} 링크 열기</a></div>`;
     return '';
   }).join('');
 }
@@ -1674,8 +1674,24 @@ function addPreviewItem(m){
 /* ══════════════════════════════════════
    EMBED
 ══════════════════════════════════════ */
-function ytId(url){try{const u=new URL(url);if(u.hostname.includes('youtu.be'))return u.pathname.slice(1);if(u.hostname.includes('youtube.com'))return u.searchParams.get('v');}catch{}return null;}
+function ytId(url){try{const u=new URL(url);if(u.hostname.includes('youtu.be'))return u.pathname.slice(1).split('?')[0];if(u.hostname.includes('youtube.com')){if(u.pathname.startsWith('/shorts/'))return u.pathname.split('/shorts/')[1].split('?')[0];return u.searchParams.get('v');}}catch{}return null;}
 function vmId(url){try{const m=url.match(/vimeo\.com\/(\d+)/);return m?m[1]:null;}catch{return null;}}
+function igCode(url){try{const m=url.match(/instagram\.com\/(?:p|reel|tv)\/([A-Za-z0-9_-]+)/);return m?m[1]:null;}catch{return null;}}
+function fbVideoUrl(url){try{const u=new URL(url);if(u.hostname.includes('facebook.com')||u.hostname.includes('fb.watch'))return url;}catch{}return null;}
+function twUrl(url){try{const u=new URL(url);if(u.hostname.includes('twitter.com')||u.hostname.includes('x.com'))return url;}catch{}return null;}
+function makeEmbedIframe(url){
+  const yt=ytId(url);
+  if(yt) return {type:'iframe',src:`https://www.youtube.com/embed/${encodeURIComponent(yt)}`,title:'YouTube'};
+  const vm=vmId(url);
+  if(vm) return {type:'iframe',src:`https://player.vimeo.com/video/${encodeURIComponent(vm)}`,title:'Vimeo'};
+  const ig=igCode(url);
+  if(ig) return {type:'iframe',src:`https://www.instagram.com/p/${ig}/embed/`,title:'Instagram'};
+  const fb=fbVideoUrl(url);
+  if(fb) return {type:'iframe',src:`https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(fb)}&show_text=false`,title:'Facebook'};
+  const tw=twUrl(url);
+  if(tw) return {type:'link',url:tw,label:'Twitter / X'};
+  return null;
+}
 function previewEmbed(){
   const url1=(document.getElementById('embed-url-1')||{}).value?.trim()||'';
   const url2=(document.getElementById('embed-url-2')||{}).value?.trim()||'';
@@ -1683,11 +1699,11 @@ function previewEmbed(){
   const urls=[url1,url2].filter(Boolean);
   if(!urls.length){wrap.style.display='none';wrap.innerHTML='';return;}
   const html=urls.map(url=>{
-    const yt=ytId(url);
-    if(yt) return `<iframe src="https://www.youtube.com/embed/${encodeURIComponent(yt)}" allowfullscreen title="YT" sandbox="allow-scripts allow-same-origin allow-presentation"></iframe>`;
-    const vm=vmId(url);
-    if(vm) return `<iframe src="https://player.vimeo.com/video/${encodeURIComponent(vm)}" allowfullscreen title="VM" sandbox="allow-scripts allow-same-origin allow-presentation"></iframe>`;
-    return `<div class="embed-ph"><i class="ti ti-link" style="font-size:18px;display:block;margin-bottom:5px"></i>YouTube / Vimeo URL만 지원됩니다</div>`;
+    const e=makeEmbedIframe(url);
+    if(!e) return `<div class="embed-ph"><i class="ti ti-link" style="font-size:18px;display:block;margin-bottom:5px"></i>지원하지 않는 URL입니다</div>`;
+    if(e.type==='iframe') return `<iframe src="${e.src}" allowfullscreen title="${e.title}" sandbox="allow-scripts allow-same-origin allow-presentation allow-popups"></iframe>`;
+    if(e.type==='link') return `<div class="embed-ph"><i class="ti ti-brand-x" style="font-size:18px;display:block;margin-bottom:5px"></i>${escHtml(e.label)}</div>`;
+    return '';
   }).join('');
   wrap.style.display='';wrap.innerHTML=html;
 }
