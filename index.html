@@ -1322,7 +1322,7 @@ function renderTrashList(){
     :trashedPosts.map(p=>`
       <div class="admin-row">
         ${catBadgeHtml(p)}
-        <span class="admin-row-label">${escHtml(titleOf(p))}</span>
+        <span class="admin-row-label" onclick="openDetail('${p.id}')" style="cursor:pointer;text-decoration:underline">${escHtml(titleOf(p))}</span>
         <span class="admin-row-date">${p.date}</span>
         <button class="btn btn-xs" onclick="restorePost('${p.id}')"><i class="ti ti-restore"></i> 복원</button>
         <button class="btn btn-danger" onclick="permanentDeletePost('${p.id}')"><i class="ti ti-trash"></i> 영구삭제</button>
@@ -1435,22 +1435,32 @@ function showTab(tab){
    DETAIL MODAL
 ══════════════════════════════════════ */
 async function openDetail(id){
-  const p=posts.find(x=>x.id===id);if(!p)return;
+  const p=posts.find(x=>x.id===id)||trashedPosts.find(x=>x.id===id);if(!p)return;
+  const isTrashed=trashedPosts.some(x=>x.id===id);
   const L=T[lang];
-  const del=isAdmin?`<button class="btn btn-danger btn-sm" onclick="deletePost('${p.id}',event);closeDetail()">${L.del}</button>`:'';
+  let adminBtns='';
+  if(isAdmin){
+    if(isTrashed){
+      adminBtns=`<button class="btn btn-xs btn-sm" onclick="restorePost('${p.id}');closeDetail()"><i class="ti ti-restore"></i> 복원</button>
+        <button class="btn btn-danger btn-sm" onclick="permanentDeletePost('${p.id}');closeDetail()"><i class="ti ti-trash"></i> 영구삭제</button>`;
+    } else {
+      adminBtns=`<button class="btn btn-danger btn-sm" onclick="deletePost('${p.id}',event);closeDetail()">${L.del}</button>`;
+    }
+  }
   document.getElementById('current-detail-post-id').value=id;
   document.getElementById('detail-content').innerHTML=`
-    <div style="margin-bottom:6px">${catBadgeHtml(p)}</div>
+    <div style="margin-bottom:6px">${catBadgeHtml(p)}${isTrashed?`<span style="font-size:11px;color:var(--red);margin-left:6px"><i class="ti ti-trash"></i> 휴지통</span>`:''}</div>
     <div class="detail-title">${escHtml(titleOf(p))}</div>
-    <div class="detail-meta"><i class="ti ti-calendar" style="font-size:12px"></i><span>${p.date}</span>${del}</div>
+    <div class="detail-meta"><i class="ti ti-calendar" style="font-size:12px"></i><span>${p.date}</span>${adminBtns}</div>
     <div class="detail-body">${escHtml(bodyOf(p))}</div>
     ${mediaGrid(p,false)}
     ${embedHtml(p.embed)}`;
   document.getElementById('detail-comments').innerHTML=
+    isTrashed?'':
     `<div class="comment-section"><div style="text-align:center;padding:16px;color:var(--text3);font-size:13px">댓글 로딩 중...</div></div>`;
   document.getElementById('detail-overlay').classList.add('open');
-  if(_dbReady) await loadCommentsForPost(id);
-  document.getElementById('detail-comments').innerHTML=renderCommentSection(id);
+  if(!isTrashed && _dbReady) await loadCommentsForPost(id);
+  if(!isTrashed) document.getElementById('detail-comments').innerHTML=renderCommentSection(id);
 }
 function closeDetail(){
   document.getElementById('detail-overlay').classList.remove('open');
