@@ -434,6 +434,10 @@ select{appearance:none;cursor:pointer;}
     <div class="sec-title" style="margin-bottom:10px" id="adm-posts-title">전체 게시물 관리</div>
     <div id="admin-post-list"></div>
     <div class="pagination" id="admin-pagination" style="display:none"></div>
+    <div style="margin-top:20px">
+      <h4 style="font-size:13px;color:var(--text2);margin-bottom:8px"><i class="ti ti-trash"></i> 휴지통</h4>
+      <div id="admin-trash-list"></div>
+    </div>
   </div>
 
   <!-- ABOUT -->
@@ -821,15 +825,12 @@ async function loadPostsFromDB(){
     .order('date',{ascending:false});
   if(error){
     console.warn('[Supabase] posts 로드 실패, localStorage 사용',error);
-    posts=load('hlh_posts2',SEED_POSTS);
+    posts=load('hlh_posts2',[]);
     return;
   }
-  if(data.length===0){
-    posts=[];
-  } else {
-    posts=data.map(dbToPost);
-    _dbReady=true;
-  }
+  _dbReady=true;
+  posts=data.filter(r=>!r.is_deleted).map(dbToPost);
+  trashedPosts=data.filter(r=>r.is_deleted).map(dbToPost);
 }
 
 async function seedPostsToDB(){
@@ -1008,6 +1009,7 @@ let lang='ko', infoFilter='all', jFilter='all', pendingMedia=[], editingPostId=n
 let infoPage=1, jPage=1, adminPage=1;
 const PAGE_SIZE=10, HOME_PIN_MAX=2, HOME_LATEST=6;
 let _dbReady=false;
+let trashedPosts=[];
 
 const PROVIDER_META={
   kakao:{bg:'#FEE500',color:'#3A2929',label:'카카오'},
@@ -1310,6 +1312,21 @@ function renderAdminPanel(){
   renderAdmCatList();
   renderAdminComments();
   renderAdminPostList();
+  renderTrashList();
+}
+function renderTrashList(){
+  const el=document.getElementById('admin-trash-list');
+  if(!el) return;
+  el.innerHTML=trashedPosts.length===0
+    ?`<div style="color:var(--text3);font-size:13px;padding:8px">휴지통이 비어있습니다.</div>`
+    :trashedPosts.map(p=>`
+      <div class="admin-row">
+        ${catBadgeHtml(p)}
+        <span class="admin-row-label">${escHtml(titleOf(p))}</span>
+        <span class="admin-row-date">${p.date}</span>
+        <button class="btn btn-xs" onclick="restorePost('${p.id}')"><i class="ti ti-restore"></i> 복원</button>
+        <button class="btn btn-danger" onclick="permanentDeletePost('${p.id}')"><i class="ti ti-trash"></i> 영구삭제</button>
+      </div>`).join('');
 }
 
 function renderAdminPostList(){
@@ -1629,10 +1646,30 @@ async function translateField(field,srcLang,auto=false){
 async function deletePost(id,e){
   if(e) e.stopPropagation();
   if(!confirm(lang==='ko'?'이 포스팅을 삭제하시겠습니까?':'Delete this post?'))return;
-  posts=posts.filter(p=>p.id!==id);
-  if(_dbReady) await deletePostFromDB(id);
-  else save('hlh_posts2',posts);
+  const p=posts.find(x=>x.id===id);
+  if(!p) return;
+  posts=posts.filter(x=>x.id!==id);
+  if(_dbReady){
+    await sb.from('posts').update({is_deleted:true}).eq('id',id);
+    trashedPosts=[p,...trashedPosts];
+  } else {
+    save('hlh_posts2',posts);
+  }
   renderAll();
+}
+async function restorePost(id){
+  const p=trashedPosts.find(x=>x.id===id);
+  if(!p) return;
+  trashedPosts=trashedPosts.filter(x=>x.id!==id);
+  await sb.from('posts').update({is_deleted:false}).eq('id',id);
+  posts=[p,...posts];
+  renderAll();
+}
+async function permanentDeletePost(id){
+  if(!confirm(lang==='ko'?'영구 삭제하시겠습니까? 복원 불가합니다.':'Permanently delete? Cannot be undone.'))return;
+  trashedPosts=trashedPosts.filter(x=>x.id!==id);
+  await deletePostFromDB(id);
+  renderAdminPanel();
 }
 
 /* ══════════════════════════════════════
@@ -2339,6 +2376,16 @@ async function init(){
   }
   /* 1. Supabase에서 posts + categories 로드 */
   await Promise.all([loadPostsFromDB(), loadCatsFromDB()]);
+  /* 1-1. localStorage 마이그레이션 (DB 비어있고 localStorage에 데이터 있을 때) */
+  if(_dbReady && posts.length===0){
+    const lsPosts=load('hlh_posts2',null);
+    if(Array.isArray(lsPosts) && lsPosts.length>0){
+      const seedIds=new Set(SEED_POSTS.map(p=>p.id));
+      const toMigrate=lsPosts.filter(p=>!seedIds.has(p.id));
+      for(const p of toMigrate) await insertPostToDB(p);
+      if(toMigrate.length>0) await loadPostsFromDB();
+    }
+  }
   /* 2. 나머지 초기화 */
   if(sessionStorage.getItem('hlh_admin')==='1') isAdmin=true;
   customPages.forEach(createCustomPageDOM);
