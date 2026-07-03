@@ -171,6 +171,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .detail-title{font-size:20px;font-weight:800;line-height:1.35;margin-bottom:6px;}
 .detail-meta{font-size:12px;color:var(--text3);margin-bottom:14px;display:flex;gap:12px;align-items:center;}
 .detail-body{font-size:14px;color:var(--text2);line-height:1.8;white-space:pre-wrap;margin-bottom:14px;}
+.detail-body a{color:var(--teal);text-decoration:underline;}
 .detail-media-grid{display:flex;flex-direction:column;align-items:center;gap:12px;margin-bottom:14px;}
 .detail-media-item{width:90%;border-radius:var(--r);overflow:hidden;background:var(--bg2);border:1px solid var(--bd);cursor:pointer;position:relative;}
 .detail-media-item img,.detail-media-item video{width:100%;height:auto;display:block;}
@@ -570,9 +571,14 @@ select{appearance:none;cursor:pointer;}
         <label>내용 (한국어)</label>
         <button class="btn btn-xs" onclick="translateField('body','ko')"><i class="ti ti-language"></i> <span>번역 →EN</span></button>
       </div>
+      <div class="editor-toolbar" style="margin-bottom:6px">
+        <button type="button" class="btn btn-xs" onclick="wrapSelection('post-body-ko','**')"><i class="ti ti-bold"></i></button>
+        <button type="button" class="btn btn-xs" onclick="wrapSelection('post-body-ko','*')"><i class="ti ti-italic"></i></button>
+      </div>
       <textarea id="post-body-ko" oninput="userEditedFields.add('body-ko');scheduleAutoTrans('body','ko')"></textarea>
       <div class="trans-spinner" id="spin-body-en">번역 중...</div>
       <div class="trans-hint" id="hint-body-en">✓ 자동 번역됨 — 직접 수정 가능</div>
+      <div style="font-size:11px;color:var(--text3);margin-top:4px">**굵게** *기울임* — URL은 자동으로 링크가 됩니다</div>
     </div>
     <!-- Body EN -->
     <div class="form-group">
@@ -580,9 +586,14 @@ select{appearance:none;cursor:pointer;}
         <label>Body (English)</label>
         <button class="btn btn-xs" onclick="translateField('body','en')"><i class="ti ti-language"></i> <span>번역 →KO</span></button>
       </div>
+      <div class="editor-toolbar" style="margin-bottom:6px">
+        <button type="button" class="btn btn-xs" onclick="wrapSelection('post-body-en','**')"><i class="ti ti-bold"></i></button>
+        <button type="button" class="btn btn-xs" onclick="wrapSelection('post-body-en','*')"><i class="ti ti-italic"></i></button>
+      </div>
       <textarea id="post-body-en" oninput="userEditedFields.add('body-en');scheduleAutoTrans('body','en')"></textarea>
       <div class="trans-spinner" id="spin-body-ko">번역 중...</div>
       <div class="trans-hint" id="hint-body-ko">✓ 자동 번역됨 — 직접 수정 가능</div>
+      <div style="font-size:11px;color:var(--text3);margin-top:4px">**bold** *italic* — URLs become clickable links automatically</div>
     </div>
 
     <div class="form-group">
@@ -1213,7 +1224,7 @@ function embedHtml(embed){
 function postCard(p){
   const delBtn=isAdmin?`<button class="btn btn-danger" onclick="deletePost('${p.id}',event)">${T[lang].del}</button>`:'';
   const body=bodyOf(p);
-  const preview=escHtml(body.slice(0,90).replace(/\n/g,' '))+(body.length>90?'…':'');
+  const preview=escHtml(body.replace(/\*\*/g,'').replace(/\*/g,'').slice(0,90).replace(/\n/g,' '))+(body.length>90?'…':'');
   const mediaIcon=(p.media&&p.media.length)?`<span><i class="ti ti-photo"></i> ${p.media.length}</span>`:'';
   const embedIcon=p.embed?`<span><i class="ti ti-player-play"></i></span>`:'';
   return `<div class="card clickable" onclick="openDetail('${p.id}')">
@@ -1235,7 +1246,7 @@ function renderAll(){renderHome();renderInfo();renderJournal();renderInfoFilters
 function homePostCard(p){
   const delBtn=isAdmin?`<button class="btn btn-danger" onclick="deletePost('${p.id}',event)">${T[lang].del}</button>`:'';
   const body=bodyOf(p);
-  const preview=escHtml(body.slice(0,90).replace(/\n/g,' '))+(body.length>90?'…':'');
+  const preview=escHtml(body.replace(/\*\*/g,'').replace(/\*/g,'').slice(0,90).replace(/\n/g,' '))+(body.length>90?'…':'');
   const mediaIcon=(p.media&&p.media.length)?`<span><i class="ti ti-photo"></i> ${p.media.length}</span>`:'';
   const embedIcon=p.embed?`<span><i class="ti ti-player-play"></i></span>`:'';
   const pinBadge=p.isPinned?`<span class="pin-badge"><i class="ti ti-pin"></i>${lang==='ko'?'고정':'Pinned'}</span>`:'';
@@ -1452,7 +1463,7 @@ async function openDetail(id){
     <div style="margin-bottom:6px">${catBadgeHtml(p)}${isTrashed?`<span style="font-size:11px;color:var(--red);margin-left:6px"><i class="ti ti-trash"></i> 휴지통</span>`:''}</div>
     <div class="detail-title">${escHtml(titleOf(p))}</div>
     <div class="detail-meta"><i class="ti ti-calendar" style="font-size:12px"></i><span>${p.date}</span>${adminBtns}</div>
-    <div class="detail-body">${escHtml(bodyOf(p))}</div>
+    <div class="detail-body">${renderBodyHtml(bodyOf(p))}</div>
     ${mediaGrid(p,false)}
     ${embedHtml(p.embed)}`;
   document.getElementById('detail-comments').innerHTML=
@@ -2286,6 +2297,30 @@ function renderCommentSection(postId){
 }
 
 function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function linkify(escapedHtml){
+  return escapedHtml.replace(/((https?:\/\/)[^\s<]+)/g,url=>{
+    const m=url.match(/^(.*?)([.,!?;:)\]]*)$/);
+    const core=m[1],trail=m[2];
+    return `<a href="${core}" target="_blank" rel="noopener noreferrer">${core}</a>${trail}`;
+  });
+}
+function renderBodyHtml(raw){
+  let s=escHtml(raw);
+  s=linkify(s);
+  s=s.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
+  s=s.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g,'<em>$1</em>');
+  return s;
+}
+function wrapSelection(textareaId,marker){
+  const ta=document.getElementById(textareaId);
+  const start=ta.selectionStart,end=ta.selectionEnd;
+  const val=ta.value;
+  const selected=val.slice(start,end)||(lang==='ko'?'텍스트':'text');
+  ta.value=val.slice(0,start)+marker+selected+marker+val.slice(end);
+  ta.focus();
+  ta.setSelectionRange(start+marker.length,start+marker.length+selected.length);
+  ta.dispatchEvent(new Event('input'));
+}
 
 async function submitComment(postId){
   if(!socialUser)return;
