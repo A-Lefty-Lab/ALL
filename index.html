@@ -495,8 +495,8 @@ select{appearance:none;cursor:pointer;}
     </div>
     <div class="login-logo"><i class="ti ti-shield-lock"></i><p id="login-sub">관리자 계정으로 로그인하세요</p></div>
     <div class="form-group">
-      <label id="lbl-uid">아이디</label>
-      <input type="text" id="login-id" autocomplete="username">
+      <label id="lbl-uid">이메일</label>
+      <input type="email" id="login-id" autocomplete="username">
     </div>
     <div class="form-group">
       <label id="lbl-pw">비밀번호</label>
@@ -774,20 +774,21 @@ const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 /* ══════════════════════════════════════
    AUTH
 ══════════════════════════════════════ */
-const ADMIN_ID='alefty', ADMIN_PW='#smti2205';
+const ADMIN_EMAIL='acquired.lefty@gmail.com';  /* 비밀 아님(식별자). 비밀번호는 Supabase Auth에만 존재 */
 let isAdmin=false;
 
-function doLogin(){
-  const id=document.getElementById('login-id').value.trim();
+async function doLogin(){
+  const email=document.getElementById('login-id').value.trim();
   const pw=document.getElementById('login-pw').value;
-  if(id===ADMIN_ID&&pw===ADMIN_PW){
-    isAdmin=true;sessionStorage.setItem('hlh_admin','1');
-    closeLoginModal();updateAuthUI();showTab('admin');
-  } else {
+  const {error}= sb ? await sb.auth.signInWithPassword({email,password:pw}) : {error:true};
+  if(error){
     document.getElementById('login-err').style.display='';
+    return;
   }
+  isAdmin=true;
+  closeLoginModal();updateAuthUI();showTab('admin');
 }
-function doLogout(){isAdmin=false;sessionStorage.removeItem('hlh_admin');updateAuthUI();showTab('home');}
+async function doLogout(){await sb?.auth.signOut();isAdmin=false;updateAuthUI();showTab('home');}
 function updateAuthUI(){
   document.getElementById('btn-write').style.display=isAdmin?'':'none';
   document.getElementById('admin-badge').style.display=isAdmin?'':'none';
@@ -1048,7 +1049,7 @@ const T={
     swStats:'사이트 현황',swLinks:'빠른 링크',
     sl1:'정보 게시글',sl2:'저널 포스트',sl3:'최근 업데이트',
     ql1:'응급상황 대처법',ql2:'재활병원 선택 가이드',ql3:'복지 혜택 신청',
-    loginTitle:'관리자 로그인',loginSub:'관리자 계정으로 로그인하세요',lblUid:'아이디',lblPw:'비밀번호',
+    loginTitle:'관리자 로그인',loginSub:'관리자 계정으로 로그인하세요',lblUid:'이메일',lblPw:'비밀번호',
     loginErr:'아이디 또는 비밀번호가 올바르지 않습니다.',doLoginBtn:'로그인',
     adminLbl:'관리자',btnLogin:'로그인',btnLogout:'로그아웃',
     writeTitle:'새 포스팅',lblType:'포스팅 유형',lblCat:'카테고리',lblCatEdit:'카테고리 편집',
@@ -1083,7 +1084,7 @@ const T={
     swStats:'Site Stats',swLinks:'Quick Links',
     sl1:'Info Posts',sl2:'Journal Entries',sl3:'Last Updated',
     ql1:'Emergency Response',ql2:'Rehab Hospital Guide',ql3:'Welfare Benefits',
-    loginTitle:'Admin Login',loginSub:'Sign in with your admin account',lblUid:'Username',lblPw:'Password',
+    loginTitle:'Admin Login',loginSub:'Sign in with your admin account',lblUid:'Email',lblPw:'Password',
     loginErr:'Incorrect username or password.',doLoginBtn:'Login',
     adminLbl:'Admin',btnLogin:'Login',btnLogout:'Logout',
     writeTitle:'New Post',lblType:'Post Type',lblCat:'Category',lblCatEdit:'Edit Categories',
@@ -2412,8 +2413,10 @@ async function init(){
     const {data:{session}}=await sb.auth.getSession();
     if(session?.user){
       const u=session.user;
-      const name=u.user_metadata?.name||u.user_metadata?.full_name||u.user_metadata?.preferred_username||u.email||u.id;
-      if(!socialUser){
+      if(u.email && u.email===ADMIN_EMAIL){
+        isAdmin=true;   /* 관리자 세션 — 소셜 사용자로 취급 안 함 */
+      } else if(!socialUser){
+        const name=u.user_metadata?.name||u.user_metadata?.full_name||u.user_metadata?.preferred_username||u.email||u.id;
         socialUser={provider:u.app_metadata?.provider||'kakao', displayName:name, uid:u.id};
         save('hlh_social_user', socialUser);
       }
@@ -2431,8 +2434,7 @@ async function init(){
       if(toMigrate.length>0) await loadPostsFromDB();
     }
   }
-  /* 2. 나머지 초기화 */
-  if(sessionStorage.getItem('hlh_admin')==='1') isAdmin=true;
+  /* 2. 나머지 초기화 (isAdmin은 위의 실제 세션 검사에서만 도출) */
   customPages.forEach(createCustomPageDOM);
   applyLang();
   updateAuthUI();
