@@ -788,7 +788,7 @@ async function doLogin(){
   isAdmin=true;
   closeLoginModal();updateAuthUI();showTab('admin');
 }
-async function doLogout(){await sb?.auth.signOut();isAdmin=false;updateAuthUI();showTab('home');}
+async function doLogout(){await sb?.auth.signOut();isAdmin=false;updateAuthUI();renderAll();showTab('home');}
 function updateAuthUI(){
   document.getElementById('btn-write').style.display=isAdmin?'':'none';
   document.getElementById('admin-badge').style.display=isAdmin?'':'none';
@@ -1665,32 +1665,43 @@ async function translateField(field,srcLang,auto=false){
 /* ══════════════════════════════════════
    DELETE
 ══════════════════════════════════════ */
+function adminOnlyGuard(){
+  if(!isAdmin){ alert(lang==='ko'?'관리자만 가능합니다. 다시 로그인하세요.':'Admins only. Please log in again.'); return false; }
+  return true;
+}
 async function deletePost(id,e){
   if(e) e.stopPropagation();
+  if(!adminOnlyGuard()) return;
   if(!confirm(lang==='ko'?'이 포스팅을 삭제하시겠습니까?':'Delete this post?'))return;
   const p=posts.find(x=>x.id===id);
   if(!p) return;
-  posts=posts.filter(x=>x.id!==id);
   if(_dbReady){
-    await sb.from('posts').update({is_deleted:true}).eq('id',id);
+    const {error}=await sb.from('posts').update({is_deleted:true}).eq('id',id);
+    if(error){ alert(lang==='ko'?'삭제 실패: 권한이 없거나 오류가 발생했습니다.':'Delete failed: no permission or an error occurred.'); return; }
+    posts=posts.filter(x=>x.id!==id);
     trashedPosts=[p,...trashedPosts];
   } else {
+    posts=posts.filter(x=>x.id!==id);
     save('hlh_posts2',posts);
   }
   renderAll();
 }
 async function restorePost(id){
+  if(!adminOnlyGuard()) return;
   const p=trashedPosts.find(x=>x.id===id);
   if(!p) return;
+  const {error}=await sb.from('posts').update({is_deleted:false}).eq('id',id);
+  if(error){ alert(lang==='ko'?'복원 실패: 권한이 없거나 오류가 발생했습니다.':'Restore failed.'); return; }
   trashedPosts=trashedPosts.filter(x=>x.id!==id);
-  await sb.from('posts').update({is_deleted:false}).eq('id',id);
   posts=[p,...posts];
   renderAll();
 }
 async function permanentDeletePost(id){
+  if(!adminOnlyGuard()) return;
   if(!confirm(lang==='ko'?'영구 삭제하시겠습니까? 복원 불가합니다.':'Permanently delete? Cannot be undone.'))return;
+  const {error}=await sb.from('posts').delete().eq('id',id);
+  if(error){ alert(lang==='ko'?'영구 삭제 실패: 권한이 없거나 오류가 발생했습니다.':'Permanent delete failed.'); return; }
   trashedPosts=trashedPosts.filter(x=>x.id!==id);
-  await deletePostFromDB(id);
   renderAdminPanel();
 }
 
