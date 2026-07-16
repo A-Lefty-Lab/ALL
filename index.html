@@ -882,6 +882,22 @@ async function deleteCatFromDB(id){
   await sb.from('categories').delete().eq('id',id);
 }
 
+/* ── 공유 설정(site_content): 소개·메뉴이름·커스텀페이지 ── */
+async function loadSiteContentFromDB(){
+  if(!sb) return;
+  const {data,error}=await sb.from('site_content').select('key,value');
+  if(error||!data) return;
+  const map={};
+  data.forEach(r=>map[r.key]=r.value);
+  if(map.about && typeof map.about==='object'){ aboutContent=map.about; save('hlh_about',aboutContent); }
+  if(map.nav_names && typeof map.nav_names==='object'){ navNames={...DEFAULT_NAV_NAMES,...map.nav_names}; save('hlh_nav_names',navNames); }
+  if(Array.isArray(map.custom_pages)){ customPages=map.custom_pages; save('hlh_custom_pages',customPages); }
+}
+async function saveSiteContent(key,value){
+  if(!sb) return {error:null};
+  return await sb.from('site_content').upsert({key,value,updated_at:new Date().toISOString()},{onConflict:'key'});
+}
+
 /* Supabase에 게시물 insert */
 async function insertPostToDB(p){
   const {data,error}=await sb.from('posts').insert([{
@@ -1875,10 +1891,11 @@ function toggleAboutEdit(){
     box.classList.remove('open');
   }
 }
-function saveAbout(){
-  aboutContent.ko=document.getElementById('about-ta-ko').value;
-  aboutContent.en=document.getElementById('about-ta-en').value;
-  save('hlh_about',aboutContent);
+async function saveAbout(){
+  const val={ko:document.getElementById('about-ta-ko').value, en:document.getElementById('about-ta-en').value};
+  const {error}=await saveSiteContent('about',val);
+  if(error){ alert(lang==='ko'?'저장 실패: 권한이 없거나 오류가 발생했습니다.':'Save failed.'); return; }
+  aboutContent=val; save('hlh_about',aboutContent);
   document.getElementById('about-edit-box').classList.remove('open');
   renderAboutBody();
 }
@@ -1907,26 +1924,27 @@ function openMenuModal(editId){
   document.getElementById('menu-overlay').classList.add('open');
 }
 function closeMenuModal(){document.getElementById('menu-overlay').classList.remove('open');}
-function saveMenu(){
+async function saveMenu(){
   const editId=document.getElementById('menu-edit-id').value;
   const koName=document.getElementById('menu-ko').value.trim();
   const enName=document.getElementById('menu-en').value.trim();
   const koContent=document.getElementById('menu-content-ko').value;
   const enContent=document.getElementById('menu-content-en').value;
   if(!koName&&!enName){alert('메뉴명을 입력해주세요.');return;}
+  const next=customPages.map(x=>({...x}));
+  let newPage=null;
   if(editId){
-    const idx=customPages.findIndex(x=>x.id===editId);
-    if(idx>=0){
-      customPages[idx]={...customPages[idx],koName:koName||enName,enName:enName||koName,koContent,enContent};
-      updateCustomPagePanel(customPages[idx]);
-    }
+    const idx=next.findIndex(x=>x.id===editId);
+    if(idx>=0) next[idx]={...next[idx],koName:koName||enName,enName:enName||koName,koContent,enContent};
   } else {
-    const id='cp'+Date.now();
-    const page={id,koName:koName||enName,enName:enName||koName,koContent,enContent};
-    customPages.push(page);
-    createCustomPageDOM(page);
+    newPage={id:'cp'+Date.now(),koName:koName||enName,enName:enName||koName,koContent,enContent};
+    next.push(newPage);
   }
-  save('hlh_custom_pages',customPages);
+  const {error}=await saveSiteContent('custom_pages',next);
+  if(error){ alert(lang==='ko'?'저장 실패: 권한이 없거나 오류가 발생했습니다.':'Save failed.'); return; }
+  customPages=next; save('hlh_custom_pages',customPages);
+  if(editId){ const p=customPages.find(x=>x.id===editId); if(p) updateCustomPagePanel(p); }
+  else if(newPage){ createCustomPageDOM(newPage); }
   closeMenuModal();
   renderAdmMenuList();
 }
@@ -1956,10 +1974,12 @@ function updateCustomPagePanel(page){
   const navEl=document.getElementById('nav-custom-'+page.id);
   if(navEl) navEl.textContent=page[lang+'Name']||page.koName;
 }
-function deleteCustomPage(id){
+async function deleteCustomPage(id){
   if(!confirm('이 메뉴를 삭제하시겠습니까?'))return;
-  customPages=customPages.filter(x=>x.id!==id);
-  save('hlh_custom_pages',customPages);
+  const next=customPages.filter(x=>x.id!==id);
+  const {error}=await saveSiteContent('custom_pages',next);
+  if(error){ alert(lang==='ko'?'삭제 실패: 권한이 없거나 오류가 발생했습니다.':'Delete failed.'); return; }
+  customPages=next; save('hlh_custom_pages',customPages);
   const navEl=document.getElementById('nav-custom-'+id);if(navEl)navEl.remove();
   const panelEl=document.getElementById('tab-custom-'+id);if(panelEl)panelEl.remove();
   renderAdmMenuList();
@@ -1976,13 +1996,15 @@ function openRenameModal(tabId){
   document.getElementById('rename-overlay').classList.add('open');
 }
 function closeRenameModal(){document.getElementById('rename-overlay').classList.remove('open');}
-function saveRename(){
+async function saveRename(){
   const tabId=document.getElementById('rename-tab-id').value;
   const ko=document.getElementById('rename-ko').value.trim();
   const en=document.getElementById('rename-en').value.trim();
   if(!ko&&!en)return;
-  navNames[tabId]={ko:ko||en,en:en||ko};
-  save('hlh_nav_names',navNames);
+  const next={...navNames,[tabId]:{ko:ko||en,en:en||ko}};
+  const {error}=await saveSiteContent('nav_names',next);
+  if(error){ alert(lang==='ko'?'저장 실패: 권한이 없거나 오류가 발생했습니다.':'Save failed.'); return; }
+  navNames=next; save('hlh_nav_names',navNames);
   applyNavNames();
   closeRenameModal();
   renderAdmMenuList();
@@ -2455,7 +2477,7 @@ async function init(){
     }
   }
   /* 1. Supabase에서 posts + categories 로드 */
-  await Promise.all([loadPostsFromDB(), loadCatsFromDB()]);
+  await Promise.all([loadPostsFromDB(), loadCatsFromDB(), loadSiteContentFromDB()]);
   /* 1-1. localStorage 마이그레이션 (DB 비어있고 localStorage에 데이터 있을 때) */
   if(_dbReady && posts.length===0){
     const lsPosts=load('hlh_posts2',null);
