@@ -1449,6 +1449,8 @@ function showTab(tab){
 async function openDetail(id){
   const p=posts.find(x=>x.id===id)||trashedPosts.find(x=>x.id===id);if(!p)return;
   const isTrashed=trashedPosts.some(x=>x.id===id);
+  const ov=document.getElementById('detail-overlay');
+  if(ov.classList.contains('open') && document.getElementById('current-detail-post-id').value===id) return; /* 이미 열림 — 재진입 방지 */
   const L=T[lang];
   let adminBtns='';
   if(isAdmin){
@@ -1463,20 +1465,39 @@ async function openDetail(id){
   document.getElementById('detail-content').innerHTML=`
     <div style="margin-bottom:6px">${catBadgeHtml(p)}${isTrashed?`<span style="font-size:11px;color:var(--red);margin-left:6px"><i class="ti ti-trash"></i> 휴지통</span>`:''}</div>
     <div class="detail-title">${escHtml(titleOf(p))}</div>
-    <div class="detail-meta"><i class="ti ti-calendar" style="font-size:12px"></i><span>${p.date}</span>${adminBtns}</div>
+    <div class="detail-meta"><i class="ti ti-calendar" style="font-size:12px"></i><span>${p.date}</span>${!isTrashed?`<button class="btn btn-xs" onclick="copyPostLink('${id}',event)"><i class="ti ti-link"></i> ${lang==='ko'?'링크 복사':'Copy link'}</button>`:''}${adminBtns}</div>
     <div class="detail-body">${renderBodyHtml(bodyOf(p))}</div>
     ${mediaGrid(p,false)}
     ${embedHtml(p.embed)}`;
   document.getElementById('detail-comments').innerHTML=
     isTrashed?'':
     `<div class="comment-section"><div style="text-align:center;padding:16px;color:var(--text3);font-size:13px">댓글 로딩 중...</div></div>`;
-  document.getElementById('detail-overlay').classList.add('open');
+  ov.classList.add('open');
+  if(!isTrashed){ const h='#post/'+encodeURIComponent(id); if(location.hash!==h) location.hash=h; } /* 공유 가능한 고유 주소 */
   if(!isTrashed && _dbReady) await loadCommentsForPost(id);
   if(!isTrashed) document.getElementById('detail-comments').innerHTML=renderCommentSection(id);
 }
 function closeDetail(){
   document.getElementById('detail-overlay').classList.remove('open');
   document.getElementById('current-detail-post-id').value='';
+  if(location.hash.startsWith('#post/')) history.replaceState(null,'',location.pathname+location.search);
+}
+function handlePostHash(){
+  const m=location.hash.match(/^#post\/(.+)$/);
+  if(m){
+    const id=decodeURIComponent(m[1]);
+    if(posts.find(x=>x.id===id)) openDetail(id);
+  } else {
+    if(document.getElementById('detail-overlay').classList.contains('open')) closeDetail();
+  }
+}
+window.addEventListener('hashchange', handlePostHash);
+function copyPostLink(id, ev){
+  const url=location.origin+location.pathname+'#post/'+encodeURIComponent(id);
+  const done=()=>{ if(ev&&ev.currentTarget){ const b=ev.currentTarget, o=b.innerHTML; b.innerHTML='<i class="ti ti-check"></i> '+(lang==='ko'?'복사됨':'Copied'); setTimeout(()=>{b.innerHTML=o;},1500); } };
+  const fallback=()=>prompt(lang==='ko'?'아래 주소를 복사하세요:':'Copy this URL:',url);
+  if(navigator.clipboard) navigator.clipboard.writeText(url).then(done).catch(fallback);
+  else fallback();
 }
 function closeDetailIfBg(e){if(e.target===document.getElementById('detail-overlay'))closeDetail();}
 
@@ -2452,6 +2473,7 @@ async function init(){
   renderInfoFilters();
   renderAll();
   renderAboutBody();
+  handlePostHash();  /* 공유 링크(#post/…)로 진입 시 해당 글 열기 */
 }
 init();
 </script>
